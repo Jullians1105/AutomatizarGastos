@@ -210,17 +210,47 @@ export type QueryTransaccionesInput = {
 };
 
 export type TransaccionRow = {
+  id: string;
   descripcion: string;
   monto: number;
   tipo: string;
   fecha: string;
   categoria: string | null;
+  cuenta: string | null;
 };
+
+function rowsFromNotionResults(
+  results: any[],
+  categoriaById: Map<string, string>,
+  cuentaById: Map<string, string>
+): TransaccionRow[] {
+  return results.map((r) => {
+    const p = r.properties;
+    const catRelation = p["Categorías"]?.relation ?? [];
+    const cuentaRelation = p["Cuenta"]?.relation ?? [];
+    return {
+      id: r.id,
+      descripcion: titleText(p["Descripción"]),
+      monto: p["Monto"]?.number ?? 0,
+      tipo: p["Tipo"]?.select?.name ?? "",
+      fecha: p["Fecha"]?.date?.start ?? "",
+      categoria: catRelation[0] ? categoriaById.get(catRelation[0].id) ?? null : null,
+      cuenta: cuentaRelation[0] ? cuentaById.get(cuentaRelation[0].id) ?? null : null,
+    };
+  });
+}
+
+export async function archivarTransaccion(pageId: string): Promise<void> {
+  await notionFetch(`/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived: true }),
+  });
+}
 
 export async function queryTransacciones(
   input: QueryTransaccionesInput
 ): Promise<TransaccionRow[]> {
-  const categorias = await getCategorias();
+  const [categorias, cuentas] = await Promise.all([getCategorias(), getCuentas()]);
   const categoria = matchByName(categorias, input.categoriaNombre);
 
   const andFilters: any[] = [
@@ -232,17 +262,49 @@ export async function queryTransacciones(
 
   const results = await queryAll(DS.transacciones, { filter: { and: andFilters } });
   const categoriaById = new Map(categorias.map((c) => [c.id, c.nombre]));
+  const cuentaById = new Map(cuentas.map((c) => [c.id, c.nombre]));
 
-  return results.map((r) => {
-    const p = r.properties;
-    const catRelation = p["Categorías"]?.relation ?? [];
-    const catNombre = catRelation[0] ? categoriaById.get(catRelation[0].id) ?? null : null;
-    return {
-      descripcion: titleText(p["Descripción"]),
-      monto: p["Monto"]?.number ?? 0,
-      tipo: p["Tipo"]?.select?.name ?? "",
-      fecha: p["Fecha"]?.date?.start ?? "",
-      categoria: catNombre,
-    };
+  return rowsFromNotionResults(results, categoriaById, cuentaById);
+}
+
+export type MovimientosRecientesInput = {
+  limite: number;
+  desde?: string | null; // YYYY-MM-DD
+  hasta?: string | null; // YYYY-MM-DD
+  fechaExacta?: string | null; // YYYY-MM-DD
+  descripcionContiene?: string | null;
+  tipo?: "Gasto" | "Ingreso" | "Transferencia" | "Transferencia Interna" | null;
+  categoriaNombre?: string | null;
+};
+
+export async function getMovimientosRecientes(
+  input: MovimientosRecientesInput
+): Promise<TransaccionRow[]> {
+  const [categorias, cuentas] = await Promise.all([getCategorias(), getCuentas()]);
+  const categoria = matchByName(categorias, input.categoriaNombre);
+
+  const andFilters: any[] = [];
+  if (input.desde) andFilters.push({ property: "Fecha", date: { on_or_after: input.desde } });
+  if (input.hasta) andFilters.push({ property: "Fecha", date: { on_or_before: input.hasta } });
+  if (input.fechaExacta) andFilters.push({ property: "Fecha", date: { equals: input.fechaExacta } });
+  if (input.descripcionContiene)
+    andFilters.push({ property: "Descripción", title: { contains: input.descripcionContiene } });
+  if (input.tipo) andFilters.push({ property: "Tipo", select: { equals: input.tipo } });
+  if (categoria) andFilters.push({ property: "Categorías", relation: { contains: categoria.id } });
+
+  const body: Record<string, unknown> = {
+    page_size: Math.min(Math.max(input.limite, 1), 50),
+    sorts: [{ property: "Fecha", direction: "descending" }],
+  };
+  if (andFilters.length > 0) body.filter = { and: andFilters };
+
+  const page = await notionFetch(`/data_sources/${DS.transacciones}/query`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
+
+  const categoriaById = new Map(categorias.map((c) => [c.id, c.nombre]));
+  const cuentaById = new Map(cuentas.map((c) => [c.id, c.nombre]));
+
+  return rowsFromNotionResults(page.results, categoriaById, cuentaById);
 }

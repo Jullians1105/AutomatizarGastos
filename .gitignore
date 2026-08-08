@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# archivo temporal con secretos reales en texto plano, ver docs/Variables_Entorno.md
+docs/Variables_Entorno.md
+
 # vercel
 .vercel
 

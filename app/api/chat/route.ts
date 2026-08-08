@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseMessage } from "@/lib/gemini";
+import { parseMessage, GeminiRateLimitError } from "@/lib/gemini";
 import {
   getCategorias,
   getCuentas,
   getTarjetas,
   createTransaccion,
   queryTransacciones,
+  getMovimientosRecientes,
+  archivarTransaccion,
   type TransaccionRow,
 } from "@/lib/notion";
 
@@ -30,6 +32,21 @@ function firstAndLastDayOfMonth(iso: string): [string, string] {
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const last = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
   return [first, last];
+}
+
+function formatFechaCorta(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", year: "numeric" }).format(
+    new Date(Date.UTC(y, m - 1, d))
+  );
+}
+
+function formatMovimiento(r: TransaccionRow): string {
+  const partes = [formatFechaCorta(r.fecha), r.tipo, COP.format(r.monto), `"${r.descripcion}"`];
+  if (r.categoria) partes.push(`categoría ${r.categoria}`);
+  if (r.cuenta) partes.push(`cuenta ${r.cuenta}`);
+  return `• ${partes.join(" · ")}`;
 }
 
 function summarize(rows: TransaccionRow[]) {
@@ -129,6 +146,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message });
     }
 
+    if (parsed.action === "query" && parsed.query_forma === "detalle") {
+      const limite = parsed.query_limite && parsed.query_limite > 0 ? parsed.query_limite : 1;
+
+      const rows = await getMovimientosRecientes({
+        limite,
+        desde: parsed.query_desde ?? null,
+        hasta: parsed.query_hasta ?? null,
+        tipo: parsed.query_tipo ?? null,
+        categoriaNombre: parsed.query_categoria ?? null,
+      });
+
+      if (rows.length === 0) {
+        return NextResponse.json({ message: "No encontré ningún movimiento con esas condiciones." });
+      }
+
+      const encabezado = rows.length === 1 ? "Esto encontré:" : `Estos son los últimos ${rows.length} movimientos:`;
+      return NextResponse.json({ message: `${encabezado}\n${rows.map(formatMovimiento).join("\n")}` });
+    }
+
     if (parsed.action === "query") {
       let desde = parsed.query_desde;
       let hasta = parsed.query_hasta;
@@ -174,9 +210,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: lines.join(" ") });
     }
 
+    if (parsed.action === "delete") {
+      const modo = parsed.delete_modo ?? "buscar";
+
+      let candidatos: TransaccionRow[];
+      if (modo === "ultimo") {
+        const limite = parsed.delete_limite && parsed.delete_limite > 0 ? parsed.delete_limite : 1;
+        candidatos = await getMovimientosRecientes({
+          limite,
+          desde: null,
+          hasta: null,
+          tipo: parsed.delete_tipo ?? null,
+          categoriaNombre: parsed.delete_categoria ?? null,
+        });
+      } else {
+        candidatos = await getMovimientosRecientes({
+          limite: 10,
+          desde: null,
+          hasta: null,
+          fechaExacta: parsed.delete_fecha ?? null,
+          descripcionContiene: parsed.delete_descripcion ?? null,
+          tipo: parsed.delete_tipo ?? null,
+          categoriaNombre: parsed.delete_categoria ?? null,
+        });
+      }
+
+      if (candidatos.length === 0) {
+        return NextResponse.json({ message: "No encontré ningún movimiento que coincida con eso." });
+      }
+
+      if (modo === "buscar" && candidatos.length > 1) {
+        return NextResponse.json({
+          message: `Encontré ${candidatos.length} movimientos que coinciden, sé más específico (o dime la fecha exacta):\n${candidatos.map(formatMovimiento).join("\n")}`,
+        });
+      }
+
+      await Promise.all(candidatos.map((c) => archivarTransaccion(c.id)));
+
+      const encabezado = candidatos.length === 1 ? "Listo, eliminé:" : `Listo, eliminé ${candidatos.length} movimientos:`;
+      return NextResponse.json({ message: `${encabezado}\n${candidatos.map(formatMovimiento).join("\n")}` });
+    }
+
     return NextResponse.json({ message: parsed.respuesta ?? "¿En qué te ayudo?" });
   } catch (err) {
     console.error(err);
+    if (err instanceof GeminiRateLimitError) {
+      return NextResponse.json({
+        message:
+          "Se me acabaron las consultas gratuitas de IA por hoy. Google limita el plan gratuito a pocas solicitudes diarias. Vuelve a intentarlo en un rato o mañana, cuando se reinicia el límite.",
+      });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error inesperado" },
       { status: 500 }
