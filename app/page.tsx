@@ -14,8 +14,16 @@ const GREETING: Message = {
   text: "Hola. Contame qué gastaste o ingresaste (ej. \"50 mil el almuerzo\"), o preguntame algo como \"¿cuánto gasté en comida este mes?\".",
 };
 
+const TEXTAREA_MAX_HEIGHT_PX = 240;
+
 function uid() {
   return Math.random().toString(36).slice(2);
+}
+
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
 }
 
 export default function ChatPage() {
@@ -32,6 +40,10 @@ export default function ChatPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    autoGrow(inputRef.current);
+  }, [input]);
 
   async function send() {
     const text = input.trim();
@@ -80,9 +92,9 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-[var(--border)]/70 bg-[var(--background)]/80 px-5 py-4 backdrop-blur-xl">
+      <header className="border-b border-[var(--border)]/70 bg-[var(--background)]/80 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-5 sm:py-4">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] shadow-[0_0_18px_rgba(79,209,197,0.5)]" />
+          <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] shadow-[0_0_18px_rgba(79,209,197,0.5)]" />
           <div>
             <h1 className="text-sm font-medium leading-none text-[var(--foreground)]">Gastos</h1>
             <p className="mt-1 text-xs text-[var(--muted)]">Conectado a Notion</p>
@@ -90,14 +102,14 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-5 py-6">
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 sm:px-5 sm:py-6">
         {messages.map((m) => (
           <div
             key={m.id}
             className={`msg-in flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[80%] ${
                 m.role === "user"
                   ? "bg-gradient-to-br from-[var(--accent-2)] to-[var(--accent-2)]/70 text-white rounded-br-sm"
                   : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] rounded-bl-sm"
@@ -120,21 +132,22 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </main>
 
-      <footer className="border-t border-[var(--border)]/70 bg-[var(--background)]/80 px-5 py-4 backdrop-blur-xl">
+      <footer className="border-t border-[var(--border)]/70 bg-[var(--background)]/80 px-4 pt-3 backdrop-blur-xl pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            rows={1}
+            rows={3}
             placeholder="Escribe un gasto, ingreso o una pregunta…"
-            className="max-h-32 flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/30"
+            style={{ maxHeight: TEXTAREA_MAX_HEIGHT_PX }}
+            className="min-h-[4.5rem] flex-1 resize-none overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-base leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/30"
           />
           <button
             onClick={send}
             disabled={loading || !input.trim()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] text-black transition-opacity disabled:opacity-30"
+            className="flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] text-black transition-opacity active:opacity-70 disabled:opacity-30"
             aria-label="Enviar"
           >
             <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
