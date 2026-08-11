@@ -110,14 +110,19 @@ export async function POST(req: NextRequest) {
           categoriaNombre: item.categoria,
           cuentaNombre: item.cuenta,
           tarjetaNombre: item.tarjeta,
+          cuentaDestinoNombre: item.cuentaDestino,
+          tarjetaDestinoNombre: item.tarjetaDestino,
         });
 
+        const esTransferencia = item.tipo === "Transferencia" || item.tipo === "Transferencia Interna";
         const detalles: string[] = [];
         detalles.push(`${item.tipo ?? "Gasto"} de ${COP.format(item.monto)}`);
         detalles.push(`"${item.descripcion}"`);
         if (result.categoriaMatched) detalles.push(`categoría ${result.categoriaMatched.nombre}`);
-        if (result.cuentaMatched) detalles.push(`cuenta ${result.cuentaMatched.nombre}`);
-        if (result.tarjetaMatched) detalles.push(`tarjeta ${result.tarjetaMatched.nombre}`);
+        if (result.cuentaMatched) detalles.push(`${esTransferencia ? "desde cuenta" : "cuenta"} ${result.cuentaMatched.nombre}`);
+        if (result.tarjetaMatched) detalles.push(`${esTransferencia ? "desde tarjeta" : "tarjeta"} ${result.tarjetaMatched.nombre}`);
+        if (result.cuentaDestinoMatched) detalles.push(`hacia cuenta ${result.cuentaDestinoMatched.nombre}`);
+        if (result.tarjetaDestinoMatched) detalles.push(`hacia tarjeta ${result.tarjetaDestinoMatched.nombre}`);
 
         let linea = `• ${detalles.join(" · ")}`;
         if (item.categoria && !result.categoriaMatched) {
@@ -125,6 +130,9 @@ export async function POST(req: NextRequest) {
         }
         if (item.cuenta && !result.cuentaMatched && !item.tarjeta) {
           linea += ` (sin cuenta parecida a "${item.cuenta}")`;
+        }
+        if (item.cuentaDestino && !result.cuentaDestinoMatched && !item.tarjetaDestino) {
+          linea += ` (sin cuenta destino parecida a "${item.cuentaDestino}")`;
         }
         if (!result.mesMatched) totalMesFaltante = true;
 

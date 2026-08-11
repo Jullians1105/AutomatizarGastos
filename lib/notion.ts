@@ -151,12 +151,16 @@ export type CreateTransaccionInput = {
   categoriaNombre?: string | null;
   cuentaNombre?: string | null;
   tarjetaNombre?: string | null;
+  cuentaDestinoNombre?: string | null;
+  tarjetaDestinoNombre?: string | null;
 };
 
 export type CreateTransaccionResult = {
   categoriaMatched: NamedOption | null;
   cuentaMatched: NamedOption | null;
   tarjetaMatched: NamedOption | null;
+  cuentaDestinoMatched: NamedOption | null;
+  tarjetaDestinoMatched: NamedOption | null;
   mesMatched: boolean;
 };
 
@@ -173,6 +177,8 @@ export async function createTransaccion(
   const categoria = matchByName(categorias, input.categoriaNombre);
   const cuenta = matchByName(cuentas, input.cuentaNombre);
   const tarjeta = matchByName(tarjetas, input.tarjetaNombre);
+  const cuentaDestino = matchByName(cuentas, input.cuentaDestinoNombre);
+  const tarjetaDestino = matchByName(tarjetas, input.tarjetaDestinoNombre);
 
   const properties: Record<string, unknown> = {
     Descripción: { title: [{ text: { content: input.descripcion } }] },
@@ -183,6 +189,8 @@ export async function createTransaccion(
   if (categoria) properties["Categorías"] = { relation: [{ id: categoria.id }] };
   if (cuenta) properties["Cuenta"] = { relation: [{ id: cuenta.id }] };
   if (tarjeta) properties["Tarjeta"] = { relation: [{ id: tarjeta.id }] };
+  if (cuentaDestino) properties["Cuenta Destino"] = { relation: [{ id: cuentaDestino.id }] };
+  if (tarjetaDestino) properties["Tarjeta Destino"] = { relation: [{ id: tarjetaDestino.id }] };
   if (mesId) properties["Mes"] = { relation: [{ id: mesId }] };
 
   await notionFetch("/pages", {
@@ -198,6 +206,8 @@ export async function createTransaccion(
     categoriaMatched: categoria,
     cuentaMatched: cuenta,
     tarjetaMatched: tarjeta,
+    cuentaDestinoMatched: cuentaDestino,
+    tarjetaDestinoMatched: tarjetaDestino,
     mesMatched: Boolean(mesId),
   };
 }

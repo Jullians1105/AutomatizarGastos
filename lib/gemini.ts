@@ -26,6 +26,14 @@ const RESPONSE_SCHEMA = {
           categoria: { type: "string" },
           cuenta: { type: "string" },
           tarjeta: { type: "string" },
+          cuentaDestino: {
+            type: "string",
+            description: "Solo para Transferencia/Transferencia Interna: cuenta destino, la que va después de 'a' (ej. 'de Nequi a Bancolombia' -> cuenta: Nequi, cuentaDestino: Bancolombia).",
+          },
+          tarjetaDestino: {
+            type: "string",
+            description: "Igual que cuentaDestino pero cuando el destino es una tarjeta.",
+          },
           fecha: { type: "string", description: "YYYY-MM-DD" },
         },
         required: ["tipo", "monto", "descripcion"],
@@ -63,6 +71,8 @@ export type ParsedItem = {
   categoria?: string;
   cuenta?: string;
   tarjeta?: string;
+  cuentaDestino?: string;
+  tarjetaDestino?: string;
   fecha?: string;
 };
 
@@ -100,13 +110,18 @@ Dado el mensaje del usuario, clasifica su intención en una de cuatro acciones y
 
 - "add": el usuario quiere registrar uno o VARIOS gastos, ingresos o transferencias en el mismo mensaje (ej. "50 mil almuerzo y 20 mil el bus" son DOS movimientos). Devuelve un item en "items" por cada movimiento distinto, cada uno con:
   - monto (número, sin puntos ni comas, ej "50 mil" -> 50000)
-  - descripcion breve
-  - tipo
+  - descripcion: SOLO el concepto corto del movimiento (ej. "almuerzo", "pago Netflix", "gasolina"). Nunca metas ahí el monto, ni el nombre de cuenta/tarjeta/categoría aunque el usuario los mencione pegados en la misma frase — cada dato va en su propio campo, no lo dupliques ni lo mezcles en la descripción.
+  - tipo: identifícalo por el SENTIDO del dinero, no por una palabra literal:
+    - "Gasto": el dinero sale a pagar algo o a alguien fuera de las cuentas propias del usuario (compras, servicios, deudas a terceros).
+    - "Ingreso": el dinero entra desde afuera (salario, le pagaron, le devolvieron algo).
+    - "Transferencia" / "Transferencia Interna": el dinero se mueve entre dos cuentas o tarjetas PROPIAS del usuario, no gasta ni gana (ej. "pasé/moví/transferí de X a Y"). En este caso no asignes categoría.
   - fecha (YYYY-MM-DD; si no dice nada usa hoy; si dice "ayer" resta un día, etc)
-  - categoria, cuenta y/o tarjeta SOLO si el mensaje da una pista y hay una opción MÁS parecida en estas listas (si no hay ninguna parecida, omite el campo):
+  - categoria (SOLO para Gasto/Ingreso, nunca para Transferencia/Transferencia Interna): elige la de esta lista que MEJOR representa el concepto por SIGNIFICADO, no por coincidencia literal de palabras — ej. "almuerzo"/"mercado"/"restaurante" -> categoría "Comida" si existe así, "gasolina"/"Uber"/"bus" -> "Transporte", "Netflix"/"Spotify" -> "Suscripciones", aunque esas palabras no aparezcan en el nombre de la categoría. Usa el nombre EXACTO de la lista. Solo omite el campo si de verdad ninguna categoría disponible tiene relación razonable con el concepto:
     Categorías disponibles: ${categorias.join(", ") || "(ninguna registrada)"}
+  - cuenta y/o tarjeta SOLO si el mensaje da una pista textual (nombre o parte de él) y hay una opción MÁS parecida por nombre en estas listas (si no hay ninguna parecida, omite el campo — a diferencia de categoria, aquí NO infieras por significado, son nombres propios):
     Cuentas disponibles: ${cuentas.join(", ") || "(ninguna registrada)"}
     Tarjetas disponibles: ${tarjetas.join(", ") || "(ninguna registrada)"}
+  - Si tipo es "Transferencia" o "Transferencia Interna" y el mensaje tiene la forma "de <origen> a <destino>": la cuenta/tarjeta que sigue a "de" es el ORIGEN (va en "cuenta" o "tarjeta"), y la que sigue a "a" es el DESTINO (va en "cuentaDestino" o "tarjetaDestino"). No confundas ese "a" con otra parte del mensaje. Ejemplos: "moví 50 mil de Nequi a Bancolombia" -> cuenta: "Nequi", cuentaDestino: "Bancolombia". "pasé 100 mil de mi cuenta de ahorros a la tarjeta de crédito" -> cuenta: "ahorros", tarjetaDestino: "crédito". Si el mensaje solo menciona una cuenta/tarjeta (sin "de ... a ..."), trátala como antes: va en "cuenta"/"tarjeta" sin destino. cuentaDestino/tarjetaDestino SOLO aplican para Transferencia/Transferencia Interna — en Gasto/Ingreso déjalos vacíos y usa solo "cuenta"/"tarjeta".
 
 - "query": el usuario pregunta por sus gastos/ingresos. Primero decide query_forma:
   - "resumen": pregunta por totales, cuánto ha gastado/ingresado, o pide top categorías (ej "¿cuánto gasté en comida este mes?", "¿cuánto llevo de ingresos en agosto?"). Si no da fechas, deja query_desde/query_hasta vacíos (se asume el mes actual completo).
