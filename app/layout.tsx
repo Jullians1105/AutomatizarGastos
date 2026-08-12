@@ -15,6 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Gastos",
   description: "Registro y consulta de gastos e ingresos por chat",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Gastos",
+  },
 };
 
 export const viewport: Viewport = {
